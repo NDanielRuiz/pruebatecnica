@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tareas del Proyecto</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <div id="task-view-container"></div>
+    </div>
+
+    <script>
+        // --- 1. GUARDIA DE SEGURIDAD Y REFERENCIAS ---
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        if (!currentUser) {
+            window.location.href = '/login.html';
+        }
+        const taskViewContainer = document.getElementById('task-view-container');
+
+        // --- 2. LÓGICA PRINCIPAL PARA CARGAR LA VISTA DE TAREAS ---
+        const loadTaskView = async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const projectId = urlParams.get('projectId');
+
+            if (!projectId) {
+                taskViewContainer.innerHTML = '<h2>Error: No se especificó un proyecto.</h2><a href="/proyectos.html" class="text-blue-600 hover:underline">Volver</a>';
+                return;
+            }
+
+            try {
+                const [projectResponse, tasksResponse] = await Promise.all([
+                    fetch(`/projects/${projectId}`, { cache: 'no-cache' }),
+                    fetch(`/projects/${projectId}/tasks`, { cache: 'no-cache' })
+                ]);
+                if (!projectResponse.ok || !tasksResponse.ok) throw new Error('Error al obtener datos');
+                const project = await projectResponse.json();
+                const tasks = await tasksResponse.json();
+
+                let tasksHTML = '';
+                tasks.forEach(task => {
+                    const taskId = task.sk.split('#')[1];
+                    tasksHTML += `
+                        <div class="bg-gray-50 p-3 rounded-md shadow-sm flex justify-between items-center">
+                            <div><h4 class="font-bold">${task.Title}</h4><p class="text-sm text-gray-600">${task.Description}</p></div>
+                            <div class="flex items-center space-x-2">
+                                <select data-project-id="${projectId}" data-task-id="${taskId}" class="status-select bg-blue-500 text-white text-sm font-medium rounded-full border-0 p-1 appearance-none text-center">
+                                    <option value="pendiente" ${task.Status === 'pendiente' ? 'selected' : ''}>Pendiente</option>
+                                    <option value="en progreso" ${task.Status === 'en progreso' ? 'selected' : ''}>En Progreso</option>
+                                    <option value="completada" ${task.Status === 'completada' ? 'selected' : ''}>Completada</option>
+                                    <option value="bloqueada" ${task.Status === 'bloqueada' ? 'selected' : ''}>Bloqueada</option>
+                                </select>
+                                <button data-project-id="${projectId}" data-task-id="${taskId}" class="delete-task-btn bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded text-xs">X</button>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                taskViewContainer.innerHTML = `
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <div class="flex justify-between items-center mb-4">
+                            <a href="/proyectos.html" class="text-blue-600 hover:underline">&larr; Volver a Mis Proyectos</a>
+                            <div class="flex items-center">
+                                <span class="text-gray-600">Bienvenido, ${currentUser.name}</span>
+                                <button id="logout-btn" class="ml-4 text-sm text-indigo-600 hover:underline">(Cerrar Sesión)</button>
+                                <div id="notifications-container" class="relative inline-block ml-4">
+                                    <button id="bell-icon" class="text-gray-500 hover:text-gray-800">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                                        <span id="notification-badge" class="hidden absolute top-0 right-0 block h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"></span>
+                                    </button>
+                                    <div id="notifications-dropdown" class="hidden absolute right-0 mt-2 w-80 bg-white rounded-md shadow-lg z-10">
+                                        <div class="p-4 font-bold border-b">Notificaciones</div>
+                                        <div id="notifications-list" class="p-2 max-h-64 overflow-y-auto"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <h2 class="text-3xl font-bold mt-4">${project.Name}</h2>
+                        <p class="text-gray-500 mb-6">${project.Description}</p>
+                        <div class="bg-gray-100 p-4 rounded-lg mb-6">
+                            <h3 class="text-xl font-bold mb-3">Añadir Nueva Tarea</h3>
+                            <form id="task-form" data-project-id="${projectId}">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <input type="text" name="title" placeholder="Título" required class="p-2 border rounded w-full"><input type="text" name="description" placeholder="Descripción" required class="p-2 border rounded w-full">
+                                    <select name="priority" class="p-2 border rounded w-full"><option value="baja">Baja</option><option value="media" selected>Media</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select>
+                                    <select name="status" class="p-2 border rounded w-full"><option value="pendiente" selected>Pendiente</option><option value="en progreso">En Progreso</option><option value="completada">Completada</option><option value="bloqueada">Bloqueada</option></select>
+                                </div>
+                                <div class="mt-4"><label class="block font-medium">Fecha Límite:</label><input type="date" name="deadline" class="p-2 border rounded w-full"></div>
+                                <button type="submit" class="mt-4 bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Añadir Tarea</button>
+                            </form>
+                        </div>
+                        <h3 class="text-2xl font-bold mb-4">Tareas del Proyecto</h3>
+                        <div class="space-y-3" id="task-list-container">${tasks.length > 0 ? tasksHTML : '<p class="text-gray-500">Este proyecto no tiene tareas todavía.</p>'}</div>
+                    </div>
+                `;
+                // Después de construir el HTML, cargamos las notificaciones y añadimos listeners
+                loadNotifications();
+                addEventListenersAfterRender();
+            } catch (error) { console.error("Error al mostrar tareas:", error); }
+        };
+        
+        const loadNotifications = async () => {
+            const notificationsList = document.getElementById('notifications-list');
+            const notificationBadge = document.getElementById('notification-badge');
+            const username = currentUser.pk.split('#')[1];
+            try {
+                const response = await fetch(`/users/${username}/notifications`);
+                const notifications = await response.json();
+                notificationsList.innerHTML = '';
+                if (notifications.length > 0) {
+                    notificationBadge.classList.remove('hidden');
+                    notifications.forEach(notif => {
+                        const notifElement = document.createElement('div');
+                        notifElement.className = 'p-2 border-b text-sm text-gray-700';
+                        notifElement.textContent = notif.message;
+                        notificationsList.appendChild(notifElement);
+                    });
+                } else {
+                    notificationBadge.classList.add('hidden');
+                    notificationsList.innerHTML = '<p class="p-2 text-sm text-gray-500">No hay notificaciones.</p>';
+                }
+            } catch (error) { console.error('Error al cargar notificaciones:', error); }
+        };
+        
+        // Esta función añade los listeners a los elementos que se crean dinámicamente
+        const addEventListenersAfterRender = () => {
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                localStorage.removeItem('currentUser');
+                window.location.href = '/login.html';
+            });
+
+            document.getElementById('notifications-container').addEventListener('click', (event) => {
+                if (event.target.closest('#bell-icon')) {
+                    document.getElementById('notifications-dropdown').classList.toggle('hidden');
+                }
+            });
+        };
+        
+        // --- 3. LÓGICA DE EVENTOS (Delegada al contenedor principal) ---
+        taskViewContainer.addEventListener('submit', async (event) => {
+            if (event.target.id === 'task-form') {
+                event.preventDefault();
+                const projectId = event.target.dataset.projectId;
+                const taskData = {
+                    title: event.target.title.value, description: event.target.description.value,
+                    priority: event.target.priority.value, status: event.target.status.value,
+                    deadline: event.target.deadline.value, userId: currentUser.pk.split('#')[1]
+                };
+                try {
+                    await fetch(`/projects/${projectId}/tasks`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(taskData),
+                    });
+                    loadTaskView();
+                } catch (error) { console.error('Error al crear la tarea:', error); }
+            }
+        });
+
+        taskViewContainer.addEventListener('click', async (event) => {
+            if (event.target.classList.contains('delete-task-btn')) {
+                const projectId = event.target.dataset.projectId;
+                const taskId = event.target.dataset.taskId;
+                if (confirm('¿Eliminar esta tarea?')) {
+                    try {
+                        await fetch(`/projects/${projectId}/tasks/${taskId}`, { method: 'DELETE' });
+                        loadTaskView();
+                    } catch (error) { console.error('Error al eliminar la tarea:', error); }
+                }
+            }
+        });
+
+        taskViewContainer.addEventListener('change', async (event) => {
+            if (event.target.classList.contains('status-select')) {
+                const projectId = event.target.dataset.projectId;
+                const taskId = event.target.dataset.taskId;
+                const newStatus = event.target.value;
+                try {
+                    const tasksResponse = await fetch(`/projects/${projectId}/tasks`, { cache: 'no-cache' });
+                    const tasks = await tasksResponse.json();
+                    const taskToUpdate = tasks.find(t => t.sk === `TASK#${taskId}`);
+                    
+                    const { Title, Description, Priority, Deadline } = taskToUpdate;
+                    const updatedData = { Title, Description, Priority, Status: newStatus, Deadline };
+                    
+                    await fetch(`/projects/${projectId}/tasks/${taskId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updatedData)
+                    });
+                } catch (error) {
+                    console.error('Error al actualizar el estado:', error);
+                    loadTaskView();
+                }
+            }
+        });
+
+        // --- 4. CARGA INICIAL ---
+        document.addEventListener('DOMContentLoaded', loadTaskView);
+    </script>
+</body>
+</html>

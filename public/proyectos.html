@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mis Proyectos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-4 md:p-8">
+        <h1 class="text-4xl font-bold text-center text-blue-600 mb-2">📋 Mis Proyectos Asignados</h1>
+        <p class="text-center text-gray-500 mb-8">
+            Bienvenido, <span id="user-name" class="font-bold"></span>
+            <button id="logout-btn" class="ml-4 text-sm text-indigo-600 hover:underline">(Cerrar Sesión)</button>
+        </p>
+        <div id="projects-list" class="space-y-4"></div>
+    </div>
+
+    <script>
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        if (!currentUser) { window.location.href = '/login.html'; }
+
+        const projectsListDiv = document.getElementById('projects-list');
+        const userNameSpan = document.getElementById('user-name');
+
+        const initializePage = () => {
+            userNameSpan.textContent = currentUser.name;
+            loadUserProjects();
+        };
+
+        const loadUserProjects = async () => {
+            const username = currentUser.pk.split('#')[1];
+            try {
+                const response = await fetch(`/users/${username}/projects`, { cache: 'no-cache' });
+                const projects = await response.json();
+                projectsListDiv.innerHTML = '';
+                if (projects.length === 0) {
+                    projectsListDiv.innerHTML = '<p class="text-gray-500">No tienes proyectos asignados.</p>';
+                    return;
+                }
+                projects.forEach(project => {
+                    const projectId = project.sk.split('#')[1];
+                    const projectCard = document.createElement('div');
+                    projectCard.className = 'bg-white p-4 rounded-lg shadow-md mb-4 flex justify-between items-center';
+                    projectCard.innerHTML = `
+                        <div>
+                            <h3 class="text-xl font-bold">${project.projectName}</h3>
+                            <p class="text-gray-600">${project.projectDescription}</p>
+                        </div>
+                        <div>
+                            <a href="/tareas.html?projectId=${projectId}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                                Gestionar Tareas
+                            </a>
+                        </div>
+                    `;
+                    projectsListDiv.appendChild(projectCard);
+                });
+            } catch (error) { console.error('Error al cargar proyectos:', error); }
+        };
+
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            localStorage.removeItem('currentUser');
+            window.location.href = '/login.html';
+        });
+
+        document.addEventListener('DOMContentLoaded', initializePage);
+    </script>
+</body>
+</html>

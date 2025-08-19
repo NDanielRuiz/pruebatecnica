@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Proyectos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+
+    <div id="login-view" class="flex items-center justify-center h-screen">
+        <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-sm">
+            <h2 class="text-2xl font-bold text-center mb-6">Iniciar Sesión</h2>
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label for="username" class="block font-medium">Nombre de Usuario:</label>
+                    <input type="text" id="username" name="username" placeholder="Escribe 'admin' o 'daniel'" required class="w-full p-2 border rounded">
+                </div>
+                <button type="submit" class="w-full bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Entrar</button>
+            </form>
+            <p id="login-error" class="text-red-500 text-center mt-4 hidden"></p>
+        </div>
+    </div>
+
+    <div id="main-app-view" class="hidden">
+        <div class="container mx-auto p-4 md:p-8">
+            <h1 class="text-4xl font-bold text-center text-blue-600 mb-2">📋 Gestión de Proyectos</h1>
+            <p class="text-center text-gray-500 mb-8">
+                Bienvenido, <span id="user-name" class="font-bold"></span> <span id="user-role" class="text-sm"></span>
+                <button id="logout-btn" class="ml-4 text-sm text-indigo-600 hover:underline">(Cerrar Sesión)</button>
+            </p>
+            
+            <div id="admin-section" class="hidden">
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h2 id="form-title" class="text-2xl mb-4">Añadir un Nuevo Proyecto</h2>
+                    <form id="project-form" class="space-y-4">
+                        <div>
+                            <label for="name" class="block font-medium">Nombre del Proyecto:</label>
+                            <input type="text" id="name" name="name" required class="w-full p-2 border rounded">
+                        </div>
+                        <div>
+                            <label for="description" class="block font-medium">Descripción:</label>
+                            <input type="text" id="description" name="description" required class="w-full p-2 border rounded">
+                        </div>
+                        <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Guardar Proyecto</button>
+                    </form>
+                </div>
+            </div>
+
+            <h2 class="text-3xl font-bold mb-4">Mis Proyectos Asignados</h2>
+            <div id="projects-list" class="space-y-4"></div>
+            
+            <div id="single-project-view" class="hidden"></div>
+        </div>
+    </div>
+
+    <script>
+    // --- 1. REFERENCIAS A ELEMENTOS DEL HTML ---
+    const loginView = document.getElementById('login-view');
+    const mainAppView = document.getElementById('main-app-view');
+    const loginForm = document.getElementById('login-form');
+    const loginError = document.getElementById('login-error');
+    const userRoleSpan = document.getElementById('user-role');
+    const userNameSpan = document.getElementById('user-name');
+    const adminSection = document.getElementById('admin-section');
+    const projectsListDiv = document.getElementById('projects-list');
+    const projectForm = document.getElementById('project-form');
+    const formTitle = document.getElementById('form-title');
+    const formButton = document.querySelector('#project-form button');
+    const singleProjectView = document.getElementById('single-project-view');
+    const mainViewContainer = document.querySelector('.container');
+
+    // Variable de estado para saber si estamos editando un proyecto
+    let currentlyEditingId = null;
+
+    // --- 2. LÓGICA DE SESIÓN Y VISTAS ---
+    loginForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const username = event.target.username.value.trim();
+        if (!username) return;
+        loginError.classList.add('hidden');
+
+        try {
+            const response = await fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username })
+            });
+
+            if (!response.ok) throw new Error('Usuario no válido');
+            const user = await response.json();
+            
+            localStorage.setItem('currentUser', JSON.stringify(user));
+            showMainApp(user);
+        } catch (error) {
+            loginError.textContent = 'Error: Usuario no encontrado.';
+            loginError.classList.remove('hidden');
+        }
+    });
+
+    const showMainApp = (user) => {
+        loginView.classList.add('hidden');
+        mainAppView.classList.remove('hidden');
+        document.body.classList.remove('flex', 'items-center', 'justify-center', 'h-screen');
+        
+        userNameSpan.textContent = user.name;
+        userRoleSpan.textContent = `(Rol: ${user.role})`;
+
+        // CORRECCIÓN: Mostramos u ocultamos toda la sección de admin
+        if (user.role === 'admin') {
+            adminSection.classList.remove('hidden');
+        } else {
+            adminSection.classList.add('hidden');
+        }
+        
+        loadProjects();
+    };
+
+    // --- 3. FUNCIONES CRUD ---
+    const loadProjects = async () => {
+        try {
+            const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+            if (!currentUser) return;
+            const username = currentUser.pk.split('#')[1];
+            
+            const response = await fetch(`/users/${username}/projects`, { cache: 'no-cache' });
+            const projects = await response.json();
+            
+            projectsListDiv.innerHTML = '';
+            if (projects.length === 0) {
+                projectsListDiv.innerHTML = '<p class="text-gray-500">Este usuario no tiene proyectos asignados.</p>';
+                return;
+            }
+            projects.forEach(project => {
+                const projectId = project.sk.split('#')[1];
+                const projectCard = document.createElement('div');
+                projectCard.className = 'bg-white p-4 rounded-lg shadow-md mb-4 flex justify-between items-center project-card cursor-pointer';
+                projectCard.dataset.projectId = projectId;
+                projectCard.innerHTML = `
+                    <div>
+                        <h3 class="text-xl font-bold">${project.projectName}</h3>
+                        <p class="text-gray-600">${project.projectDescription}</p>
+                    </div>
+                    <div class="space-x-2">
+                        <button data-id="${projectId}" class="edit-btn bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-1 px-3 rounded">Editar</button>
+                        <button data-id="${projectId}" class="delete-btn bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded">Eliminar</button>
+                    </div>
+                `;
+                projectsListDiv.appendChild(projectCard);
+            });
+        } catch (error) { console.error('Error al cargar proyectos del usuario:', error); }
+    };
+
+    const resetForm = () => {
+        projectForm.reset();
+        currentlyEditingId = null;
+        formTitle.textContent = 'Añadir un Nuevo Proyecto';
+        formButton.textContent = 'Guardar Proyecto';
+        if (formButton.classList.contains('bg-green-500')) {
+            formButton.classList.replace('bg-green-500', 'bg-blue-500');
+            formButton.classList.replace('hover:bg-green-700', 'hover:bg-blue-700');
+        }
+    };
+
+    const showTasksForProject = async (projectId) => {
+        try {
+            const [projectResponse, tasksResponse] = await Promise.all([
+                fetch(`/projects/${projectId}`, { cache: 'no-cache' }),
+                fetch(`/projects/${projectId}/tasks`, { cache: 'no-cache' })
+            ]);
+            if (!projectResponse.ok || !tasksResponse.ok) throw new Error('Error al obtener datos');
+            const project = await projectResponse.json();
+            const tasks = await tasksResponse.json();
+
+            mainViewContainer.classList.add('hidden');
+            singleProjectView.classList.remove('hidden');
+            
+            let tasksHTML = '';
+            tasks.forEach(task => {
+                const taskId = task.sk.split('#')[1];
+                tasksHTML += `
+                    <div class="bg-gray-50 p-3 rounded-md shadow-sm flex justify-between items-center">
+                        <div>
+                            <h4 class="font-bold">${task.Title}</h4>
+                            <p class="text-sm text-gray-600">${task.Description}</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <select data-project-id="${projectId}" data-task-id="${taskId}" class="status-select bg-blue-500 text-white text-sm font-medium rounded-full border-0 p-1 appearance-none text-center">
+                                <option value="pendiente" ${task.Status === 'pendiente' ? 'selected' : ''}>Pendiente</option>
+                                <option value="en progreso" ${task.Status === 'en progreso' ? 'selected' : ''}>En Progreso</option>
+                                <option value="completada" ${task.Status === 'completada' ? 'selected' : ''}>Completada</option>
+                                <option value="bloqueada" ${task.Status === 'bloqueada' ? 'selected' : ''}>Bloqueada</option>
+                            </select>
+                            <button data-project-id="${projectId}" data-task-id="${taskId}" class="delete-task-btn bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded text-xs">X</button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            singleProjectView.innerHTML = `
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <button id="back-to-projects" class="mb-4 text-blue-600 hover:underline">&larr; Volver</button>
+                    <h2 class="text-3xl font-bold">${project.Name}</h2>
+                    <p class="text-gray-500 mb-6">${project.Description}</p>
+                    <div class="bg-gray-100 p-4 rounded-lg mb-6">
+                        <h3 class="text-xl font-bold mb-3">Añadir Tarea</h3>
+                        <form id="task-form" data-project-id="${projectId}">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <input type="text" name="title" placeholder="Título" required class="p-2 border rounded w-full"><input type="text" name="description" placeholder="Descripción" required class="p-2 border rounded w-full">
+                                <select name="priority" class="p-2 border rounded w-full"><option value="baja">Baja</option><option value="media" selected>Media</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select>
+                                <select name="status" class="p-2 border rounded w-full"><option value="pendiente" selected>Pendiente</option><option value="en progreso">En Progreso</option><option value="completada">Completada</option><option value="bloqueada">Bloqueada</option></select>
+                            </div>
+                            <button type="submit" class="mt-4 bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Añadir Tarea</button>
+                        </form>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-4">Tareas del Proyecto</h3>
+                    <div class="space-y-3" id="task-list-container">${tasks.length > 0 ? tasksHTML : '<p>No hay tareas todavía.</p>'}</div>
+                </div>
+            `;
+        } catch (error) { console.error("Error al mostrar tareas:", error); }
+    };
+
+    // --- 5. LÓGICA DE EVENTOS ---
+    projectForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        const userId = currentUser.pk.split('#')[1];
+
+        const projectData = {
+            name: event.target.name.value,
+            description: event.target.description.value,
+            userId: userId
+        };
+
+        try {
+            const url = currentlyEditingId ? `/projects/${currentlyEditingId}` : '/projects';
+            const method = currentlyEditingId ? 'PUT' : 'POST';
+            await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(projectData) });
+            resetForm();
+            loadProjects();
+        } catch (error) { console.error('Error al guardar el proyecto:', error); }
+    });
+
+    projectsListDiv.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (target.classList.contains('delete-btn')) {
+            const projectId = target.dataset.id;
+            if (confirm('¿Estás seguro?')) {
+                try {
+                    await fetch(`/projects/${projectId}`, { method: 'DELETE' });
+                    loadProjects();
+                } catch (error) { console.error('Error al eliminar el proyecto:', error); }
+            }
+        } else if (target.classList.contains('edit-btn')) {
+            const projectId = target.dataset.id;
+            try {
+                const response = await fetch(`/projects/${projectId}`, { cache: 'no-cache' });
+                const project = await response.json();
+                projectForm.name.value = project.Name;
+                projectForm.description.value = project.Description;
+                currentlyEditingId = projectId;
+                formTitle.textContent = 'Editar Proyecto';
+                formButton.textContent = 'Actualizar Proyecto';
+                formButton.classList.replace('bg-blue-500', 'bg-green-500');
+                formButton.classList.replace('hover:bg-blue-700', 'hover:bg-green-700');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } catch (error) { console.error('Error al obtener datos para editar:', error); }
+        } else {
+            const projectCard = target.closest('.project-card');
+            if (projectCard) {
+                const projectId = projectCard.dataset.projectId;
+                showTasksForProject(projectId);
+            }
+        }
+    });
+    
+    singleProjectView.addEventListener('submit', async (event) => {
+        if (event.target.id === 'task-form') {
+            event.preventDefault();
+            const projectId = event.target.dataset.projectId;
+            const taskData = {
+                title: event.target.title.value, description: event.target.description.value,
+                priority: event.target.priority.value, status: event.target.status.value,
+            };
+            try {
+                await fetch(`/projects/${projectId}/tasks`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(taskData),
+                });
+                showTasksForProject(projectId);
+            } catch (error) { console.error('Error al crear la tarea:', error); }
+        }
+    });
+
+    singleProjectView.addEventListener('click', async (event) => {
+        if (event.target.classList.contains('delete-task-btn')) {
+            const projectId = event.target.dataset.projectId;
+            const taskId = event.target.dataset.taskId;
+            if (confirm('¿Eliminar esta tarea?')) {
+                try {
+                    await fetch(`/projects/${projectId}/tasks/${taskId}`, { method: 'DELETE' });
+                    showTasksForProject(projectId);
+                } catch (error) { console.error('Error al eliminar la tarea:', error); }
+            }
+        }
+    });
+
+    singleProjectView.addEventListener('change', async (event) => {
+        if (event.target.classList.contains('status-select')) {
+            const projectId = event.target.dataset.projectId;
+            const taskId = event.target.dataset.taskId;
+            const newStatus = event.target.value;
+            try {
+                const tasksResponse = await fetch(`/projects/${projectId}/tasks`);
+                const tasks = await tasksResponse.json();
+                const taskToUpdate = tasks.find(t => t.sk === `TASK#${taskId}`);
+                
+                const { Title, Description, Priority } = taskToUpdate;
+                const updatedData = { Title, Description, Priority, Status: newStatus };
+
+                await fetch(`/projects/${projectId}/tasks/${taskId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updatedData)
+                });
+            } catch (error) {
+                console.error('Error al actualizar el estado:', error);
+                showTasksForProject(projectId);
+            }
+        }
+    });
+
+    document.body.addEventListener('click', (event) => {
+        if (event.target.id === 'back-to-projects') {
+            mainViewContainer.classList.remove('hidden');
+            singleProjectView.classList.add('hidden');
+            loadProjects(); // Recargamos proyectos por si algo cambió
+        }
+        if (event.target.id === 'logout-btn') {
+            localStorage.removeItem('currentUser');
+            window.location.reload();
+        }
+    });
+
+    // --- 6. CARGA INICIAL ---
+    document.addEventListener('DOMContentLoaded', () => {
+        const loggedInUser = localStorage.getItem('currentUser');
+        if (loggedInUser) {
+            showMainApp(JSON.parse(loggedInUser));
+        }
+    });
+</script>
+</body>
+</html>

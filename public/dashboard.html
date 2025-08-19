@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-4 md:p-8 text-center">
+        <h1 class="text-4xl font-bold text-gray-800 mb-2">Panel de Administrador</h1>
+        <p class="text-gray-600 mb-8">
+            Bienvenido, <span id="user-name" class="font-bold"></span>
+            <button id="logout-btn" class="ml-4 text-sm text-indigo-600 hover:underline">(Cerrar Sesión)</button>
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <a href="/gestion-proyectos.html" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-8 px-4 rounded-lg shadow-lg transition-transform transform hover:scale-105">
+                <h2 class="text-2xl">Gestionar Proyectos</h2>
+            </a>
+            <a href="/gestion-tareas.html" class="bg-green-500 hover:bg-green-700 text-white font-bold py-8 px-4 rounded-lg shadow-lg transition-transform transform hover:scale-105">
+                <h2 class="text-2xl">Gestionar Tareas</h2>
+            </a>
+            <a href="/gestion-usuarios.html" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-8 px-4 rounded-lg shadow-lg transition-transform transform hover:scale-105">
+                <h2 class="text-2xl">Gestionar Usuarios</h2>
+            </a>
+        </div>
+    </div>
+
+    <script>
+        // Guardia de seguridad y lógica de logout
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        if (!currentUser || currentUser.role !== 'admin') {
+            alert('Acceso denegado.');
+            window.location.href = '/login.html';
+        }
+
+        document.getElementById('user-name').textContent = currentUser.name;
+
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            localStorage.removeItem('currentUser');
+            window.location.href = '/login.html';
+        });
+    </script>
+</body>
+</html>

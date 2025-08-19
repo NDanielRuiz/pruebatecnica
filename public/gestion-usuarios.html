@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Usuarios (Admin)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <h1 class="text-4xl font-bold text-center text-blue-600 mb-2">👥 Gestión de Usuarios</h1>
+        <p class="text-center text-gray-500 mb-8">
+            Bienvenido, <span id="user-name" class="font-bold"></span>
+            <a href="/dashboard.html" class="ml-4 text-sm text-indigo-600 hover:underline">(Volver al Dashboard)</a>
+            <button id="logout-btn" class="ml-4 text-sm text-indigo-600 hover:underline">(Cerrar Sesión)</button>
+        </p>
+        
+        <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+            <h2 class="text-2xl mb-4">Crear Nuevo Usuario</h2>
+            <form id="user-form" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label for="username" class="block font-medium">Username (ID):</label>
+                        <input type="text" id="username" name="username" placeholder="ej: jdoe" required class="w-full p-2 border rounded">
+                    </div>
+                    <div>
+                        <label for="name" class="block font-medium">Nombre Completo:</label>
+                        <input type="text" id="name" name="name" placeholder="ej: John Doe" required class="w-full p-2 border rounded">
+                    </div>
+                    <div>
+                        <label for="role" class="block font-medium">Rol:</label>
+                        <select id="role" name="role" class="w-full p-2 border rounded">
+                            <option value="usuario" selected>Usuario</option>
+                            <option value="admin">Administrador</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Crear Usuario</button>
+            </form>
+            <p id="form-error" class="text-red-500 mt-4 hidden"></p>
+        </div>
+
+        <h2 class="text-3xl font-bold mb-4">Lista de Usuarios</h2>
+        <div id="users-list" class="space-y-4"></div>
+    </div>
+
+    <script>
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        if (!currentUser || currentUser.role !== 'admin') {
+            alert('Acceso denegado.');
+            window.location.href = '/login.html';
+        }
+
+        const usersListDiv = document.getElementById('users-list');
+        const userForm = document.getElementById('user-form');
+        const formError = document.getElementById('form-error');
+
+        const loadUsers = async () => {
+            try {
+                const response = await fetch('/users', { cache: 'no-cache' });
+                const users = await response.json();
+                
+                usersListDiv.innerHTML = '';
+                if (users.length === 0) {
+                    usersListDiv.innerHTML = '<p>No hay usuarios en el sistema.</p>';
+                    return;
+                }
+                users.forEach(user => {
+                    const username = user.pk.split('#')[1];
+                    const userCard = document.createElement('div');
+                    userCard.className = 'bg-white p-4 rounded-lg shadow-md flex justify-between items-center';
+                    userCard.innerHTML = `
+                        <div>
+                            <h3 class="text-xl font-bold">${user.name}</h3>
+                            <p class="text-gray-600">Username: ${username} | Rol: <span class="font-semibold">${user.role}</span></p>
+                        </div>
+                        <div>
+                            ${username !== 'admin' ? `<button data-id="${username}" class="delete-user-btn text-red-500 hover:underline text-sm">Eliminar</button>` : '<span class="text-sm text-gray-400">No se puede eliminar</span>'}
+                        </div>
+                    `;
+                    usersListDiv.appendChild(userCard);
+                });
+            } catch (error) {
+                console.error('Error al cargar usuarios:', error);
+            }
+        };
+
+        userForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            formError.classList.add('hidden');
+            const newUserData = {
+                username: event.target.username.value,
+                name: event.target.name.value,
+                role: event.target.role.value,
+            };
+
+            try {
+                const response = await fetch('/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newUserData),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Error desconocido');
+                }
+
+                userForm.reset();
+                loadUsers();
+            } catch (error) {
+                formError.textContent = `Error: ${error.message}`;
+                formError.classList.remove('hidden');
+            }
+        });
+
+        usersListDiv.addEventListener('click', async (event) => {
+            if (event.target.classList.contains('delete-user-btn')) {
+                const username = event.target.dataset.id;
+                if (confirm(`¿Estás seguro de que quieres eliminar al usuario '${username}'?`)) {
+                    try {
+                        await fetch(`/users/${username}`, { method: 'DELETE' });
+                        loadUsers();
+                    } catch (error) {
+                        alert('No se pudo eliminar al usuario.');
+                        console.error('Error al eliminar usuario:', error);
+                    }
+                }
+            }
+        });
+
+        document.getElementById('user-name').textContent = currentUser.name;
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            localStorage.removeItem('currentUser');
+            window.location.href = '/login.html';
+        });
+
+        document.addEventListener('DOMContentLoaded', loadUsers);
+    </script>
+</body>
+</html>

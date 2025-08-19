@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar Sesión</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+    <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-sm">
+        <h2 class="text-2xl font-bold text-center mb-6">Iniciar Sesión</h2>
+        <form id="login-form" class="space-y-4">
+            <div>
+                <label for="username" class="block font-medium">Usuario:</label>
+                <input type="text" id="username" name="username" placeholder="Escribe 'admin' o 'daniel'" required class="w-full p-2 border rounded">
+            </div>
+            <button type="submit" class="w-full bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Entrar</button>
+        </form>
+        <p id="login-error" class="text-red-500 text-center mt-4 hidden"></p>
+    </div>
+
+    <script>
+        const loginForm = document.getElementById('login-form');
+        const loginError = document.getElementById('login-error');
+
+        loginForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const username = event.target.username.value.trim();
+            if (!username) return;
+            loginError.classList.add('hidden');
+
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username })
+                });
+
+                if (!response.ok) throw new Error('Usuario no válido');
+                
+                const user = await response.json();
+                
+                // Guardamos al usuario en el navegador para recordarlo en otras páginas
+                localStorage.setItem('currentUser', JSON.stringify(user));
+
+                // Redirigimos a la página correcta según el rol
+                if (user.role === 'admin') {
+                    window.location.href = '/dashboard.html';
+                } else {
+                    window.location.href = '/proyectos.html';
+                }
+
+            } catch (error) {
+                loginError.textContent = 'Error: Usuario no encontrado.';
+                loginError.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

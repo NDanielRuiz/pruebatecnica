@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Tareas (Admin)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <h1 class="text-4xl font-bold text-center text-blue-600 mb-2">🔧 Gestión de Todas las Tareas</h1>
+        <p class="text-center text-gray-500 mb-8 flex items-center justify-center">
+            <span>Bienvenido, <span id="user-name" class="font-bold"></span></span>
+            <a href="/dashboard.html" class="ml-4 text-sm text-indigo-600 hover:underline">(Volver al Dashboard)</a>
+            <button id="logout-btn" class="ml-4 text-sm text-indigo-600 hover:underline">(Cerrar Sesión)</button>
+            
+            <div id="notifications-container" class="relative inline-block ml-4">
+                <button id="bell-icon" class="text-gray-500 hover:text-gray-800">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                    <span id="notification-badge" class="hidden absolute top-0 right-0 block h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"></span>
+                </button>
+                <div id="notifications-dropdown" class="hidden right-0 mt-2 w-80 bg-white rounded-md shadow-lg z-10">
+                    <div class="p-4 font-bold border-b">Notificaciones</div>
+                    <div id="notifications-list" class="p-2 max-h-64 overflow-y-auto"></div>
+                </div>
+            </div>
+        </p>
+        
+        <div id="tasks-list" class="space-y-4"></div>
+    </div>
+
+    <div id="edit-task-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 h-full w-full flex items-center justify-center">
+        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+            <h2 class="text-2xl font-bold mb-4">Editar Tarea</h2>
+            <form id="edit-task-form">
+                <input type="hidden" id="edit-project-id">
+                <input type="hidden" id="edit-task-id">
+                <div class="space-y-4">
+                    <div>
+                        <label for="edit-title" class="block font-medium">Título:</label>
+                        <input type="text" id="edit-title" name="title" required class="w-full p-2 border rounded">
+                    </div>
+                    <div>
+                        <label for="edit-description" class="block font-medium">Descripción:</label>
+                        <input type="text" id="edit-description" name="description" required class="w-full p-2 border rounded">
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-end space-x-4">
+                    <button type="button" id="cancel-edit-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">Cancelar</button>
+                    <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. GUARDIA DE SEGURIDAD Y REFERENCIAS ---
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        if (!currentUser || currentUser.role !== 'admin') {
+            alert('Acceso denegado.');
+            window.location.href = '/login.html';
+        }
+
+        const tasksListDiv = document.getElementById('tasks-list');
+        const editTaskModal = document.getElementById('edit-task-modal');
+        const editTaskForm = document.getElementById('edit-task-form');
+        const cancelEditBtn = document.getElementById('cancel-edit-btn');
+        const notificationsContainer = document.getElementById('notifications-container');
+        const notificationBadge = document.getElementById('notification-badge');
+        const notificationsDropdown = document.getElementById('notifications-dropdown');
+        const notificationsList = document.getElementById('notifications-list');
+        
+        // --- 2. FUNCIÓN DE INICIALIZACIÓN ---
+        const initializePage = () => {
+            document.getElementById('user-name').textContent = currentUser.name;
+            loadAllTasks(); // <-- CORRECCIÓN: Llama a la función correcta para esta página
+            loadNotifications();
+        };
+
+        // --- 3. FUNCIONES DE LÓGICA ---
+        const loadAllTasks = async () => {
+            try {
+                const response = await fetch('/tasks', { cache: 'no-cache' });
+                const tasks = await response.json();
+                tasksListDiv.innerHTML = '';
+                if (tasks.length === 0) {
+                    tasksListDiv.innerHTML = '<p class="text-gray-500">No hay ninguna tarea en el sistema.</p>';
+                    return;
+                }
+                tasks.forEach(task => {
+                    const projectId = task.pk.split('#')[1];
+                    const taskId = task.sk.split('#')[1];
+                    const taskCard = document.createElement('div');
+                    taskCard.className = 'bg-white p-4 rounded-lg shadow-md';
+                    taskCard.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h3 class="text-xl font-bold">${task.Title}</h3>
+                                <p class="text-gray-600">${task.Description}</p>
+                                <p class="text-sm text-gray-400 mt-2">Proyecto: ${projectId}</p>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-sm font-medium text-white bg-blue-500 px-2 py-1 rounded-full">${task.Status}</span>
+                                <div class="mt-2 space-x-2">
+                                    <button data-task='${JSON.stringify(task)}' class="edit-task-btn text-yellow-500 hover:underline text-sm">Editar</button>
+                                    <button data-project-id="${projectId}" data-task-id="${taskId}" class="delete-task-btn text-red-500 hover:underline text-sm">Eliminar</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    tasksListDiv.appendChild(taskCard);
+                });
+            } catch (error) { console.error('Error al cargar todas las tareas:', error); }
+        };
+
+        const loadNotifications = async () => {
+            const username = currentUser.pk.split('#')[1];
+            try {
+                const response = await fetch(`/users/${username}/notifications`);
+                const notifications = await response.json();
+                notificationsList.innerHTML = '';
+                if (notifications.length > 0) {
+                    notificationBadge.classList.remove('hidden');
+                    notifications.forEach(notif => {
+                        const notifElement = document.createElement('div');
+                        notifElement.className = 'p-2 border-b text-sm text-gray-700';
+                        notifElement.textContent = notif.message;
+                        notificationsList.appendChild(notifElement);
+                    });
+                } else {
+                    notificationBadge.classList.add('hidden');
+                    notificationsList.innerHTML = '<p class="p-2 text-sm text-gray-500">No hay notificaciones.</p>';
+                }
+            } catch (error) { console.error('Error al cargar notificaciones:', error); }
+        };
+
+        // --- 4. LÓGICA DE EVENTOS ---
+        tasksListDiv.addEventListener('click', async (event) => {
+            const target = event.target;
+            if (target.classList.contains('delete-task-btn')) {
+                const projectId = target.dataset.projectId;
+                const taskId = target.dataset.taskId;
+                if (confirm('¿Eliminar esta tarea?')) {
+                    try {
+                        await fetch(`/projects/${projectId}/tasks/${taskId}`, { method: 'DELETE' });
+                        loadAllTasks();
+                    } catch (error) { console.error('Error al eliminar la tarea:', error); }
+                }
+            }
+            if (target.classList.contains('edit-task-btn')) {
+                const taskData = JSON.parse(target.dataset.task);
+                document.getElementById('edit-project-id').value = taskData.pk.split('#')[1];
+                document.getElementById('edit-task-id').value = taskData.sk.split('#')[1];
+                document.getElementById('edit-title').value = taskData.Title;
+                document.getElementById('edit-description').value = taskData.Description;
+                editTaskModal.classList.remove('hidden');
+            }
+        });
+
+        cancelEditBtn.addEventListener('click', () => {
+            editTaskModal.classList.add('hidden');
+        });
+
+        editTaskForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const projectId = document.getElementById('edit-project-id').value;
+            const taskId = document.getElementById('edit-task-id').value;
+            const updatedData = {
+                Title: document.getElementById('edit-title').value,
+                Description: document.getElementById('edit-description').value,
+            };
+            try {
+                const tasksResponse = await fetch(`/projects/${projectId}/tasks`, { cache: 'no-cache' });
+                const tasks = await tasksResponse.json();
+                const taskToUpdate = tasks.find(t => t.sk === `TASK#${taskId}`);
+                
+                await fetch(`/projects/${projectId}/tasks/${taskId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...taskToUpdate, ...updatedData })
+                });
+                editTaskModal.classList.add('hidden');
+                loadAllTasks();
+            } catch (error) { console.error('Error al actualizar la tarea:', error); }
+        });
+        
+        notificationsContainer.addEventListener('click', (event) => {
+            if (event.target.closest('#bell-icon')) {
+                notificationsDropdown.classList.toggle('hidden');
+            }
+        });
+
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            localStorage.removeItem('currentUser');
+            window.location.href = '/login.html';
+        });
+
+        // --- 5. CARGA INICIAL ---
+        document.addEventListener('DOMContentLoaded', initializePage);
+    </script>
+</body>
+</html>
