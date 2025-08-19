@@ -10,65 +10,39 @@ const TABLE_NAME = "gestiondetareas";
 // --- FUNCIONES PARA PROYECTOS ---
 
 export const createProject = async (req, res) => {
-    // 1. AHORA RECIBIMOS EL userId DESDE EL FRONTEND EN EL BODY
-    const { name, description, userId } = req.body; 
-
-    if (!userId) {
-        // Añadimos una validación
-        return res.status(400).json({ message: "El ID del usuario es requerido para crear un proyecto." });
-    }
-
+    const { name, description, userId } = req.body;
+    if (!userId) { return res.status(400).json({ message: "userId es requerido" }); }
     const projectId = uuidv4();
-
     const newProject = {
-        pk: `PROJECT#${projectId}`,
-        sk: `METADATA#${projectId}`,
+        pk: `PROJECT#${projectId}`, sk: `METADATA#${projectId}`,
         Name: name, Description: description, CreatedAt: new Date().toISOString()
     };
-
-    // 2. LA RELACIÓN AHORA USA EL userId QUE LLEGÓ EN LA PETICIÓN
     const userProjectRelation = {
-        pk: `USER#${userId}`,
-        sk: `PROJECT#${projectId}`,
-        gsi1pk: `USER#${userId}`,
-        gsi1sk: `PROJECT#${projectId}`,
-        projectName: name,
-        projectDescription: description
+        pk: `USER#${userId}`, sk: `PROJECT#${projectId}`,
+        gsi1pk: `USER#${userId}`, gsi1sk: `PROJECT#${projectId}`,
+        projectName: name, projectDescription: description
     };
-
     const command = new BatchWriteCommand({
         RequestItems: {
-            [TABLE_NAME]: [
-                { PutRequest: { Item: newProject } },
-                { PutRequest: { Item: userProjectRelation } },
-            ],
-        },
+            [TABLE_NAME]: [ { PutRequest: { Item: newProject } }, { PutRequest: { Item: userProjectRelation } } ]
+        }
     });
-
     try {
         await docClient.send(command);
         res.status(201).json(newProject);
-    } catch (error) {
-        res.status(500).json({ message: "Error al crear el proyecto y su relación", error: error.message });
-    }
+    } catch (error) { res.status(500).json({ message: "Error al crear proyecto", error: error.message }); }
 };
 
 export const getProjects = async (req, res) => {
     const command = new ScanCommand({
         TableName: TABLE_NAME,
-        // Este filtro se asegura de que solo obtengamos ítems de Proyectos
         FilterExpression: "begins_with(pk, :pk) AND begins_with(sk, :sk)",
-        ExpressionAttributeValues: {
-            ":pk": "PROJECT#",
-            ":sk": "METADATA#"
-        },
+        ExpressionAttributeValues: { ":pk": "PROJECT#", ":sk": "METADATA#" }
     });
     try {
         const response = await docClient.send(command);
         res.status(200).json(response.Items);
-    } catch (error) {
-        res.status(500).json({ message: "Error al obtener todos los proyectos", error: error.message });
-    }
+    } catch (error) { res.status(500).json({ message: "Error al obtener proyectos", error: error.message }); }
 };
 
 export const getProjectById = async (req, res) => {
@@ -79,14 +53,9 @@ export const getProjectById = async (req, res) => {
     });
     try {
         const response = await docClient.send(command);
-        if (response.Item) {
-            res.status(200).json(response.Item);
-        } else {
-            res.status(404).json({ message: "Proyecto no encontrado" });
-        }
-    } catch (error) {
-        res.status(500).json({ message: "Error al obtener el proyecto", error: error.message });
-    }
+        if (response.Item) { res.status(200).json(response.Item); } 
+        else { res.status(404).json({ message: "Proyecto no encontrado" }); }
+    } catch (error) { res.status(500).json({ message: "Error al obtener proyecto", error: error.message }); }
 };
 
 export const updateProject = async (req, res) => {
@@ -103,9 +72,7 @@ export const updateProject = async (req, res) => {
     try {
         const response = await docClient.send(command);
         res.status(200).json(response.Attributes);
-    } catch (error) {
-        res.status(500).json({ message: "Error al actualizar el proyecto", error: error.message });
-    }
+    } catch (error) { res.status(500).json({ message: "Error al actualizar proyecto", error: error.message }); }
 };
 
 export const deleteProject = async (req, res) => {
@@ -116,36 +83,45 @@ export const deleteProject = async (req, res) => {
     });
     try {
         await docClient.send(command);
-        res.status(200).json({ message: "Proyecto eliminado exitosamente" });
-    } catch (error) {
-        res.status(500).json({ message: "Error al eliminar el proyecto", error: error.message });
-    }
+        res.status(200).json({ message: "Proyecto eliminado" });
+    } catch (error) { res.status(500).json({ message: "Error al eliminar proyecto", error: error.message }); }
 };
 
-// controllers/projects.controller.js
-
-// ... (después de la función deleteProject) ...
+export const assignProjectToUser = async (req, res) => {
+    const { projectId } = req.params;
+    const { userId } = req.body;
+    if (!userId) { return res.status(400).json({ message: "userId es requerido." }); }
+    try {
+        const projectCommand = new GetCommand({
+            TableName: TABLE_NAME,
+            Key: { pk: `PROJECT#${projectId}`, sk: `METADATA#${projectId}` },
+        });
+        const projectResponse = await docClient.send(projectCommand);
+        if (!projectResponse.Item) { return res.status(404).json({ message: "Proyecto no encontrado." }); }
+        const project = projectResponse.Item;
+        const userProjectRelation = {
+            pk: `USER#${userId}`, sk: `PROJECT#${projectId}`,
+            gsi1pk: `USER#${userId}`, gsi1sk: `PROJECT#${projectId}`,
+            projectName: project.Name, projectDescription: project.Description
+        };
+        const putCommand = new PutCommand({ TableName: TABLE_NAME, Item: userProjectRelation });
+        await docClient.send(putCommand);
+        res.status(200).json({ message: `Proyecto asignado a ${userId} exitosamente.` });
+    } catch (error) { res.status(500).json({ message: "Error al asignar el proyecto", error: error.message }); }
+};
 
 export const getProjectsForUser = async (req, res) => {
     const { username } = req.params;
-    
-    // Este comando es la clave: usa el GSI que creamos.
     const command = new QueryCommand({
         TableName: TABLE_NAME,
-        IndexName: "gsi1-index", // ¡Le decimos que use nuestro índice especial!
+        IndexName: "gsi1-index",
         KeyConditionExpression: "gsi1pk = :pk",
-        ExpressionAttributeValues: {
-            ":pk": `USER#${username}`,
-        },
+        ExpressionAttributeValues: { ":pk": `USER#${username}` },
     });
-
     try {
         const response = await docClient.send(command);
-        // Esto devolverá los ítems de RELACIÓN (que contienen el nombre y descripción del proyecto)
         res.status(200).json(response.Items);
-    } catch (error) {
-        res.status(500).json({ message: "Error al obtener los proyectos del usuario", error: error.message });
-    }
+    } catch (error) { res.status(500).json({ message: "Error al obtener proyectos de usuario", error: error.message }); }
 };
 
 // --- FUNCIONES PARA TAREAS ---
@@ -157,8 +133,7 @@ export const createTask = async (req, res) => {
     const { projectId } = req.params;
     const { title, description, status, priority, deadline } = req.body;
     const taskId = uuidv4();
-    // Por ahora, simulamos que todas las tareas se le asignan a 'daniel'
-    const assignedUserId = "daniel"; 
+    const assignedUserId = "daniel";
 
     const newTask = {
         pk: `PROJECT#${projectId}`,
@@ -168,8 +143,11 @@ export const createTask = async (req, res) => {
         Status: status || 'pendiente',
         Priority: priority || 'media',
         Deadline: deadline || null,
-        AssignedUser: assignedUserId, // <-- ¡NUEVO CAMPO IMPORTANTE!
+        AssignedUser: assignedUserId,
         CreatedAt: new Date().toISOString(),
+        // --- ¡NUEVOS ATRIBUTOS PARA EL FILTRADO! ---
+        gsi2pk: `STATUS#${status || 'pendiente'}`,
+        gsi2sk: `PRIORITY#${priority || 'media'}`,
     };
 
     const userTaskRelation = {
@@ -178,7 +156,7 @@ export const createTask = async (req, res) => {
         projectId: `PROJECT#${projectId}`,
         createdAt: new Date().toISOString(),
     };
-
+    
     const command = new BatchWriteCommand({
         RequestItems: {
             [TABLE_NAME]: [
@@ -193,6 +171,32 @@ export const createTask = async (req, res) => {
         res.status(201).json(newTask);
     } catch (error) {
         res.status(500).json({ message: "Error al crear la tarea y su relación", error: error.message });
+    }
+};
+
+export const filterTasksByStatus = async (req, res) => {
+    // Obtenemos el estado desde los query params de la URL (ej: /tasks/filter?status=pendiente)
+    const { status } = req.query;
+
+    if (!status) {
+        return res.status(400).json({ message: "El parámetro 'status' es requerido." });
+    }
+
+    const command = new QueryCommand({
+        TableName: TABLE_NAME,
+        IndexName: "gsi2-index", // ¡Le decimos que use nuestro nuevo índice!
+        KeyConditionExpression: "gsi2pk = :status",
+        ExpressionAttributeValues: {
+            ":status": `STATUS#${status}`,
+        },
+    });
+
+    try {
+        const response = await docClient.send(command);
+        res.status(200).json(response.Items);
+    } catch (error) {
+        console.error("Error al filtrar tareas:", error);
+        res.status(500).json({ message: "Error al filtrar tareas" });
     }
 };
 
@@ -216,25 +220,29 @@ export const getTasksForProject = async (req, res) => {
 
 export const updateTask = async (req, res) => {
     const { projectId, taskId } = req.params;
-    const { title, description, status, priority } = req.body;
+    // Recibimos todos los campos para asegurar consistencia
+    const { Title, Description, Status, Priority, Deadline, AssignedUser, CreatedAt } = req.body;
+
     const command = new UpdateCommand({
         TableName: TABLE_NAME,
         Key: { pk: `PROJECT#${projectId}`, sk: `TASK#${taskId}` },
-        UpdateExpression: "SET #title = :t, #desc = :d, #status = :s, #priority = :p",
+        // Expresión para actualizar TODOS los campos relevantes
+        UpdateExpression: "SET #title = :t, #desc = :d, #status = :s, #priority = :p, #deadline = :dl, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #assignedUser = :au, #createdAt = :ca",
         ExpressionAttributeNames: {
-            "#title": "Title",
-            "#desc": "Description",
-            "#status": "Status",
-            "#priority": "Priority",
+            "#title": "Title", "#desc": "Description", "#status": "Status",
+            "#priority": "Priority", "#deadline": "Deadline", "#gsi2pk": "gsi2pk",
+            "#gsi2sk": "gsi2sk", "#assignedUser": "AssignedUser", "#createdAt": "CreatedAt"
         },
         ExpressionAttributeValues: {
-            ":t": title,
-            ":d": description,
-            ":s": status,
-            ":p": priority,
+            ":t": Title, ":d": Description, ":s": Status, ":p": Priority,
+            ":dl": Deadline || null, ":au": AssignedUser, ":ca": CreatedAt,
+            // ¡AQUÍ ESTÁ LA CORRECCIÓN CLAVE! Actualizamos los índices GSI con los nuevos valores
+            ":gsi2pk": `STATUS#${Status}`,
+            ":gsi2sk": `PRIORITY#${Priority}`
         },
         ReturnValues: "ALL_NEW",
     });
+
     try {
         const response = await docClient.send(command);
         res.status(200).json(response.Attributes);
@@ -260,10 +268,11 @@ export const deleteTask = async (req, res) => {
 export const getAllTasks = async (req, res) => {
     const command = new ScanCommand({
         TableName: TABLE_NAME,
-        // Filtramos para obtener solo los ítems cuya 'sk' empieza con TASK#
-        FilterExpression: "begins_with(sk, :sk)",
+        // CORRECCIÓN: Filtramos para obtener solo los ítems que son TAREAS REALES
+        FilterExpression: "begins_with(pk, :pk) AND begins_with(sk, :sk)",
         ExpressionAttributeValues: {
-            ":sk": "TASK#",
+            ":pk": "PROJECT#", // La pk debe empezar con PROJECT#
+            ":sk": "TASK#",    // Y la sk debe empezar con TASK#
         },
     });
 

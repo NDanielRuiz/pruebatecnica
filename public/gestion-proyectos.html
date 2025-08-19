@@ -56,14 +56,27 @@
         const singleProjectView = document.getElementById('single-project-view');
         const projectsMainView = document.getElementById('projects-main-view');
         let currentlyEditingId = null;
+        let allUsers = []; // Variable para guardar la lista de usuarios
 
-        // --- 2. INICIALIZACIÓN ---
-        const initializePage = () => {
+        // --- 2. INICIALIZACIÓN DE LA PÁGINA ---
+        const initializePage = async () => {
             document.getElementById('user-name').textContent = currentUser.name;
-            loadAllProjects();
+            await loadAllUsers(); // Primero cargamos la lista de usuarios
+            loadAllProjects(); // Luego cargamos los proyectos
         };
 
-        // --- 3. FUNCIONES CRUD Y VISTAS ---
+        // --- 3. FUNCIONES DE LÓGICA ---
+        const loadAllUsers = async () => {
+            try {
+                const response = await fetch('/users', { cache: 'no-cache' });
+                if (!response.ok) throw new Error('No se pudieron cargar los usuarios');
+                allUsers = await response.json();
+            } catch (error) {
+                console.error("Error al cargar la lista de usuarios:", error);
+                alert("No se pudo cargar la lista de usuarios. La asignación no funcionará.");
+            }
+        };
+
         const loadAllProjects = async () => {
             try {
                 const response = await fetch('/projects', { cache: 'no-cache' });
@@ -73,19 +86,31 @@
                     projectsListDiv.innerHTML = '<p class="text-gray-500">No hay proyectos creados.</p>';
                     return;
                 }
+                
+                // Creamos las opciones del dropdown una sola vez con la lista de usuarios ya cargada
+                const userOptions = allUsers
+                    .map(user => `<option value="${user.pk.split('#')[1]}">${user.name} (${user.pk.split('#')[1]})</option>`)
+                    .join('');
+
                 projects.forEach(project => {
                     const projectId = project.pk.split('#')[1];
                     const projectCard = document.createElement('div');
-                    projectCard.className = 'bg-white p-4 rounded-lg shadow-md mb-4 flex justify-between items-center project-card cursor-pointer';
-                    projectCard.dataset.projectId = projectId;
+                    projectCard.className = 'bg-white p-4 rounded-lg shadow-md mb-4';
                     projectCard.innerHTML = `
-                        <div>
-                            <h3 class="text-xl font-bold">${project.Name}</h3>
-                            <p class="text-gray-600">${project.Description}</p>
+                        <div class="flex justify-between items-center project-card cursor-pointer" data-project-id="${projectId}">
+                            <div>
+                                <h3 class="text-xl font-bold">${project.Name}</h3>
+                                <p class="text-gray-600">${project.Description}</p>
+                            </div>
+                            <div class="space-x-2">
+                                <button data-id="${projectId}" class="edit-btn bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-1 px-3 rounded">Editar</button>
+                                <button data-id="${projectId}" class="delete-btn bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded">Eliminar</button>
+                            </div>
                         </div>
-                        <div class="space-x-2">
-                            <button data-id="${projectId}" class="edit-btn bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-1 px-3 rounded">Editar</button>
-                            <button data-id="${projectId}" class="delete-btn bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded">Eliminar</button>
+                        <div class="mt-4 pt-4 border-t flex items-center gap-2">
+                            <label for="assign-user-${projectId}" class="font-semibold text-sm">Asignar a:</label>
+                            <select id="assign-user-${projectId}" class="p-2 border rounded w-full">${userOptions}</select>
+                            <button data-id="${projectId}" class="assign-btn bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Asignar</button>
                         </div>
                     `;
                     projectsListDiv.appendChild(projectCard);
@@ -198,6 +223,24 @@
                     formButton.classList.replace('hover:bg-blue-700', 'hover:bg-green-700');
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 } catch (error) { console.error('Error al obtener datos para editar:', error); }
+            } else if (target.classList.contains('assign-btn')) {
+                const projectId = target.dataset.id;
+                const selectElement = document.getElementById(`assign-user-${projectId}`);
+                const userIdToAssign = selectElement.value;
+                if (userIdToAssign) {
+                    try {
+                        const response = await fetch(`/projects/${projectId}/assign`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ userId: userIdToAssign })
+                        });
+                        if (!response.ok) throw new Error('Falló la asignación');
+                        alert(`Proyecto asignado a ${userIdToAssign} correctamente.`);
+                    } catch (error) {
+                        console.error('Error al asignar proyecto:', error);
+                        alert('No se pudo asignar el proyecto.');
+                    }
+                }
             } else {
                 const projectCard = target.closest('.project-card');
                 if (projectCard) {
@@ -214,7 +257,7 @@
                 const taskData = {
                     title: event.target.title.value, description: event.target.description.value,
                     priority: event.target.priority.value, status: event.target.status.value,
-                    deadline: event.target.deadline.value
+                    deadline: event.target.deadline.value, userId: currentUser.pk.split('#')[1]
                 };
                 try {
                     await fetch(`/projects/${projectId}/tasks`, {
@@ -247,8 +290,8 @@
                     const tasksResponse = await fetch(`/projects/${projectId}/tasks`, { cache: 'no-cache' });
                     const tasks = await tasksResponse.json();
                     const taskToUpdate = tasks.find(t => t.sk === `TASK#${taskId}`);
-                    const { Title, Description, Priority } = taskToUpdate;
-                    const updatedData = { Title, Description, Priority, Status: newStatus };
+                    const { Title, Description, Priority, Deadline } = taskToUpdate;
+                    const updatedData = { Title, Description, Priority, Status: newStatus, Deadline };
                     await fetch(`/projects/${projectId}/tasks/${taskId}`, {
                         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updatedData)
                     });
@@ -258,7 +301,7 @@
                 }
             }
         });
-    
+        
         document.body.addEventListener('click', (event) => {
             if (event.target.id === 'logout-btn') {
                 localStorage.removeItem('currentUser');

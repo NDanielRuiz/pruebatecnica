@@ -3,7 +3,7 @@
 import { Router } from 'express';
 import { 
     createProject, getProjects, getProjectById, deleteProject, updateProject,
-    createTask, getTasksForProject, updateTask, deleteTask, loginUser, getAllTasks, getProjectsForUser, getNotificationsForUser   
+    createTask, getTasksForProject, updateTask, deleteTask, loginUser, getAllTasks, getProjectsForUser, getNotificationsForUser, filterTasksByStatus, assignProjectToUser     
 } from '../controllers/projects.controller.js';
 
 const router = Router();
@@ -24,9 +24,11 @@ router.post('/projects/:projectId/tasks', createTask);
 router.get('/projects/:projectId/tasks', getTasksForProject);
 router.put('/projects/:projectId/tasks/:taskId', updateTask);
 router.delete('/projects/:projectId/tasks/:taskId', deleteTask);
+router.post('/projects/:projectId/assign', assignProjectToUser);
+
+router.get('/tasks/filter', filterTasksByStatus);
 
 router.get('/users/:username/projects', getProjectsForUser);
-
 router.get('/users/:username/notifications', getNotificationsForUser);
 
 export default router;
