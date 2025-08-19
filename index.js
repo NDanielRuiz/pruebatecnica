@@ -2,6 +2,7 @@
 
 import express from 'express';
 import bodyParser from 'body-parser';
+import cors from 'cors';
 import projectsRoutes from './routes/projects.routes.js';
 import usuariosRoutes from './routes/usuarios.routes.js';
 
@@ -9,6 +10,7 @@ const app = express();
 const PORT = 3000;
 
 // Middlewares
+app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static('public')); // 1. Servir archivos HTML, CSS, etc.
 
